@@ -6,7 +6,7 @@ import {
   Send, Star, UploadCloud, Download, Check, FileText, Wallet,
   Flame, Zap, Compass, Layers, CheckCircle, ExternalLink
 } from 'lucide-react';
-
+const API_BASE = 'https://gig-marketplace-api.onrender.com';
 const INITIAL_GIGS = [
   {
     id: 'gig-1',
@@ -125,10 +125,51 @@ export default function App() {
   // Client Booking Form
   const [bookingForm, setBookingForm] = useState({ brief: '', deadline: '' });
 
+ useEffect(() => {
+  fetch(`${API_BASE}/api/gigs`)
+    .then(res => res.json())
+    .then(serverGigs => {
+      setGigs(currentGigs =>
+        serverGigs.map(gig => {
+          const existing = currentGigs.find(g => g.id === gig.id);
+
+          return {
+            ...existing,
+            id: gig.id,
+            creatorName: gig.creator_name,
+            title: gig.title,
+            category: gig.category,
+            rate: gig.rate,
+            deliveryDays: gig.delivery_days,
+            description: gig.description,
+            activePendingCount: gig.active_pending || 0,
+            maxPendingCapacity: gig.max_capacity || 3
+          };
+        })
+      );
+    })
+    .catch(err => console.error('Failed to load gigs:', err));
+}, []);
   useEffect(() => {
     localStorage.setItem('creator_gigs_v3', JSON.stringify(gigs));
   }, [gigs]);
 
+  useEffect(() => {
+  fetch(`${API_BASE}/api/bookings`)
+    .then(res => res.json())
+    .then(serverBookings => {
+      setBookings(serverBookings.map(b => ({
+        id: b.id,
+        gigId: b.gig_id,
+        clientName: b.client_name,
+        amount: b.amount,
+        status: b.status,
+        brief: b.brief,
+        declineReason: b.decline_reason || ''
+      })));
+    })
+    .catch(err => console.error('Failed to load bookings:', err));
+}, []);
   useEffect(() => {
     localStorage.setItem('creator_bookings_v3', JSON.stringify(bookings));
   }, [bookings]);
@@ -190,6 +231,22 @@ export default function App() {
       maxPendingCapacity: Number(newGig.maxPendingCapacity) || 3,
       createdAt: Date.now()
     };
+    fetch(`${API_BASE}/api/gigs`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    id: created.id,
+    creator_name: created.creatorName,
+    title: created.title,
+    category: created.category,
+    rate: created.rate,
+    delivery_days: created.deliveryDays,
+    description: created.description,
+    max_capacity: created.maxPendingCapacity
+  })
+}).catch(err => console.error('Failed to save gig:', err));
     setGigs([created, ...gigs]);
     setNewGig({ title: '', category: 'Video Editing', rate: '', deliveryDays: 2, description: '', maxPendingCapacity: 3 });
     showToast('Gig is live in the marketplace!');
@@ -229,6 +286,20 @@ export default function App() {
 
     setWallet(w => ({ ...w, clientBalance: w.clientBalance - selectedGigForBooking.rate }));
     setGigs(gigs.map(g => g.id === selectedGigForBooking.id ? { ...g, activePendingCount: (g.activePendingCount || 0) + 1 } : g));
+    fetch(`${API_BASE}/api/bookings`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    id: newBooking.id,
+    gig_id: newBooking.gigId,
+    client_name: newBooking.clientName,
+    amount: newBooking.amount,
+    status: newBooking.status,
+    brief: newBooking.brief
+  })
+}).catch(err => console.error('Failed to save booking:', err));
     setBookings([newBooking, ...bookings]);
     setSelectedGigForBooking(null);
     setBookingForm({ brief: '', deadline: '' });
@@ -245,6 +316,18 @@ export default function App() {
       setWallet(w => ({ ...w, clientBalance: w.clientBalance + bk.amount }));
     }
 
+    fetch(`${API_BASE}/api/bookings/${bookingId}/status`, {
+  method: 'PATCH',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    status: decision === 'Accepted' ? 'Accepted' : 'Declined',
+    decline_reason: decision === 'Declined'
+      ? (reason || 'Creator over capacity.')
+      : ''
+  })
+}).catch(err => console.error('Failed to update booking:', err));
     setBookings(bookings.map(item => {
       if (item.id === bookingId) {
         return {
